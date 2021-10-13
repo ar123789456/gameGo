@@ -1,129 +1,266 @@
 package main
 
 import (
-	"crypto/tls"
 	"fmt"
 	"log"
-	"net"
-	"net/http"
-	"net/mail"
-	"net/smtp"
-	"text/template"
+	"math/rand"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
 )
 
-var tpl *template.Template
+var Speed int
 
-type Form struct {
-	name string
-	tel  string
-	mail string
-}
-
-func init() {
-	tpl = template.Must(template.ParseGlob("templates/*.html"))
-
+type flower struct {
+	file string
+	Pos  int
 }
 
 func main() {
-	http.HandleFunc("/", index)
-	http.ListenAndServe(":8080", nil)
-	// SendMes("ar123789456@mail.ru", "Arman", "4545445", "dasfghdj")
+	Speed = 40
+	size := GetTerminalSize()
+	tic := 0
+	var pos []flower
+	var h flower
+	h.Pos = size - (size / 3)
+	h.file = "1.txt"
+	pos = append(pos, h)
+	delInPos := false
+	jump := 0
+	widthjump := 0
+	// fmt.Println(pos, h)
+	// return
+
+	ch := make(chan string)
+	go func(ch chan string) {
+		// disable input buffering
+		exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
+		// do not display entered characters on the screen
+		exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
+		var b []byte = make([]byte, 1)
+		for {
+			os.Stdin.Read(b)
+			ch <- string(b)
+		}
+	}(ch)
+
+	for {
+		if tic%100 == 0 && Speed > 20 {
+			Speed = Speed - 2
+		}
+		stdin := ""
+		select {
+		case stdin, _ = <-ch:
+			fmt.Println("Keys pressed:", stdin)
+		default:
+			fmt.Println("Working..")
+		}
+		if delInPos {
+			pos = pos[1:]
+			delInPos = false
+		}
+		if jump != 0 {
+			switch widthjump {
+			case 1:
+				jump = 4
+				widthjump++
+			case 2:
+				jump = 5
+				widthjump++
+			case 3:
+				jump = 7
+				widthjump++
+			case 4:
+				jump = 8
+				widthjump++
+			case 5:
+				jump = 8
+				widthjump++
+			case 6:
+				jump = 8
+				widthjump++
+			case 7:
+				jump = 9
+				widthjump++
+			case 8:
+				jump = 9
+				widthjump++
+			case 9:
+				jump = 9
+				widthjump++
+			case 10:
+				jump = 8
+				widthjump++
+			case 11:
+				jump = 8
+				widthjump++
+			case 12:
+				jump = 8
+				widthjump++
+			case 13:
+				jump = 7
+				widthjump++
+			case 14:
+				jump = 5
+				widthjump++
+			case 15:
+				jump = 4
+				widthjump++
+			case 16:
+				jump = 0
+				widthjump = 0
+			}
+		}
+		if stdin == " " && jump == 0 {
+			jump = 2
+			widthjump++
+		}
+
+		stdin = ""
+		speed := time.Millisecond * time.Duration(Speed)
+		time.Sleep(speed)
+		fraim := rendering(size, tic)
+
+		fraim = addDino(fraim, tic, jump, widthjump)
+		for j, i := range pos {
+			fraim = barrier(fraim, i)
+
+			if size-i.Pos > 30+rand.Intn(20) && j+1 == len(pos) {
+				name := strconv.Itoa(rand.Intn(6))
+				var h flower
+				h.Pos = size
+				h.file = name + ".txt"
+				pos = append(pos, h)
+			}
+
+			pos[j].Pos = pos[j].Pos - 1
+			if i.Pos == 0 {
+				delInPos = true
+			}
+		}
+
+		fraim = addScore(fraim, tic)
+
+		fmt.Println("\033[2J")
+		fmt.Println(rand.Intn(10))
+		fmt.Println(pos)
+		for _, i := range fraim {
+			// fmt.Println(len(i))
+			fmt.Println(i)
+		}
+		tic++
+	}
 }
 
-func index(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		// http.Error()
-		return
+func rendering(size, itr int) []string {
+
+	var frame []string
+	for i := 0; i < 20; i++ {
+		line := ""
+		if i > 16 {
+			for j := 0; j < size; j++ {
+				if j == 0 && itr%2 != 1 {
+					j++
+				}
+				if j%2 != 0 {
+					line += "~"
+				} else {
+					line += " "
+				}
+			}
+		} else {
+			for j := 0; j < size; j++ {
+				line += " "
+			}
+		}
+		frame = append(frame, line)
 	}
-	if r.Method == http.MethodPost {
-		var form Form
-		form.mail = r.FormValue("mail")
-		form.name = r.FormValue("name")
-		form.tel = r.FormValue("phone")
-		SendMes("ar123789456@mail.ru", form.name, form.tel, form.mail)
-	}
-	err := tpl.ExecuteTemplate(w, "index.html", nil)
-	if err != nil {
-		// errorHandler(w, r, http.StatusInternalServerError)
-		return
-	}
+	return frame
 }
 
-func SendMes(tO, Name, tel, maIl string) {
-
-	from := mail.Address{"", "ar123789456@mail.ru"}
-	to := mail.Address{"", tO}
-	subj := "Этот чувак заинтересовался: " + Name
-	body := fmt.Sprintf("Name: %v \nNumber: %v\n mail: %v", Name, tel, maIl)
-
-	// Setup headers
-	headers := make(map[string]string)
-	headers["From"] = from.String()
-	headers["To"] = to.String()
-	headers["Subject"] = subj
-
-	// Setup message
-	message := ""
-	for k, v := range headers {
-		message += fmt.Sprintf("%s: %s\r\n", k, v)
+func addDino(frame []string, tic, jump, widthjump int) []string {
+	tic = (tic % 4) + 1
+	name := fmt.Sprintf("sprite/%v.txt", tic)
+	if jump != 0 {
+		name = "sprite/5.txt"
+		if widthjump%2 == 1 {
+			name = "sprite/6.txt"
+		}
 	}
-	message += "\r\n" + body
-
-	// Connect to the SMTP Server
-	servername := "smtp.mail.ru:465"
-
-	host, _, _ := net.SplitHostPort(servername)
-
-	auth := smtp.PlainAuth("", "ar123789456@mail.ru", "hh3EAY8JuzK9XTrDVaNY", host)
-
-	// TLS config
-	tlsconfig := &tls.Config{
-		InsecureSkipVerify: true,
-		ServerName:         host,
-	}
-
-	// Here is the key, you need to call tls.Dial instead of smtp.Dial
-	// for smtp servers running on 465 that require an ssl connection
-	// from the very beginning (no starttls)
-	conn, err := tls.Dial("tcp", servername, tlsconfig)
+	dino, err := os.ReadFile(name)
 	if err != nil {
-		log.Panic(err)
+		fmt.Println(err)
+		os.Exit(0)
 	}
+	di := strings.Split(string(dino), "\n")
+	for i, k := range di {
+		a := frame[20-3-len(di)+i-jump]
+		l := len(k)
+		a = a[:10] + k + a[l+10:]
+		frame[20-3-len(di)+i-jump] = a
+	}
+	return frame
+}
 
-	c, err := smtp.NewClient(conn, host)
+func barrier(frame []string, pos flower) []string {
+
+	cactus, err := os.ReadFile("sprite/barrier/" + pos.file)
 	if err != nil {
-		log.Panic(err)
+		fmt.Println(err)
+		os.Exit(0)
 	}
-
-	// Auth
-	if err = c.Auth(auth); err != nil {
-		log.Panic(err)
+	a := strings.Split(string(cactus), "\n")
+	ln := len(a)
+	fmt.Print(len(a))
+	for i, k := range a {
+		b := frame[20-3-ln+i]
+		l := len(k)
+		if l+pos.Pos > len(b) {
+			continue
+		}
+		if b[pos.Pos:l+pos.Pos] != createAbys(l) {
+			os.Exit(0)
+		}
+		b = b[:pos.Pos] + k + b[l+pos.Pos:]
+		frame[20-3-ln+i] = b
 	}
+	return frame
+}
 
-	// To && From
-	if err = c.Mail(from.Address); err != nil {
-		log.Panic(err)
+func createAbys(l int) string {
+	abys := ""
+	for i := 0; i < l; i++ {
+		abys += " "
 	}
+	return abys
+}
 
-	if err = c.Rcpt(to.Address); err != nil {
-		log.Panic(err)
-	}
+func addScore(frame []string, score int) []string {
+	sco := strconv.Itoa(score)
+	a := frame[3]
+	a = a[:len(a)-5-len(sco)] + sco + a[len(a)-5:]
+	frame[3] = a
+	return frame
+}
 
-	// Data
-	w, err := c.Data()
+func GetTerminalSize() int {
+	cmd := exec.Command("stty", "size")
+	cmd.Stdin = os.Stdin
+	out, err := cmd.Output()
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
-
-	_, err = w.Write([]byte(message))
+	for i, v := range out {
+		if v == ' ' {
+			out = out[i+1 : len(out)-1] // out это массив байтов и в него записали размер терминала , затем пробегаемся по нему
+			break
+		}
+	}
+	x, err := strconv.Atoi(string(out)) // Так как мы его превращаем в строку , то используем strconv.Atoi для получения стандартных чисел
 	if err != nil {
-		log.Panic(err)
+		fmt.Println("ERROR1")
 	}
-
-	err = w.Close()
-	if err != nil {
-		log.Panic(err)
-	}
-
-	c.Quit()
+	return x
 }
